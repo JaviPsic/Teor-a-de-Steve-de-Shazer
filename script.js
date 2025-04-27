@@ -45,7 +45,7 @@ const questions = [
         phase: 4
     },
     {
-        question: "¿Cuál de los siguientes enunciados describe mejor el Axioma 1 de de Shazer?",
+        question: "¿Cuál de los siguientes enunciados describe mejor el Axioma 1 de de Shazer acerca del objetivo central de la terapia?",
         options: [
             "La terapia se centra principalmente en comprender la historia del problema del cliente.",
             "La terapia es un proceso interaccional observable, es decir, una conversación.",
@@ -146,48 +146,28 @@ function createQuestionCard(question, index) {
     card.appendChild(cardBack);
     cardContainer.appendChild(card);
 
-    // Añadir event listener al card para voltear
-    card.addEventListener('click', () => flipCard(card, index));
+    // >>>>>>>>>>>> ELIMINADA: La llamada a flipCard ya no se hace al hacer clic en el card
+    // card.addEventListener('click', () => flipCard(card, index));
+    // <<<<<<<<<<<<
 
     return cardContainer;
 }
 
 // Función para voltear la tarjeta y verificar la respuesta
+// Esta función ahora se llama *desde* el listener de la opción de respuesta
 function flipCard(card, questionIndex) {
-    // Obtener el card container
-    const cardContainer = card.closest('.card-container');
-
-    // Evitar voltear si la tarjeta está deshabilitada (por fase o ya respondida correctamente)
-    if (cardContainer.classList.contains('disabled')) {
-        return;
-    }
-
-     // Evitar voltear si ya está volteada (y no en proceso de volver)
-     if (card.classList.contains('flipped')) {
-         // Si ya está volteada, y es incorrecta (no disabled), un clic adicional podría intentar voltearla de nuevo.
-         // Permitimos voltear solo si no está ya marcada como respondida correctamente
-         if (!answeredQuestions.includes(questionIndex)) {
-             // Si es una tarjeta incorrecta que se mostró temporalmente,
-             // permite que el clic intente la lógica de nuevo (probablemente seleccionando otra opción)
-             // O podrías simplemente retornar aquí si prefieres que solo se voltee una vez por intento.
-             // Por ahora, si ya está volteada, asumimos que el usuario la vio y no hacemos nada más con un clic en la tarjeta.
-              return;
-         }
-     }
-
-
-    // Obtener la opción seleccionada dentro de esta tarjeta específica
-    const selectedOption = card.querySelector('.answer-option.selected');
-
-    // Si no hay opción seleccionada, avisar y no voltear
-    if (!selectedOption) {
-        alert("Por favor, selecciona una respuesta primero.");
-        return;
-    }
+    // No necesitamos verificar si el contenedor está deshabilitado aquí,
+    // porque la lógica de la opción ya lo hizo antes de llamar a flipCard.
+    // No necesitamos verificar si ya está volteada aquí,
+    // porque la lógica de la opción no llamará a flipCard si ya está volteada.
+    // No necesitamos verificar si hay una opción seleccionada,
+    // porque la lógica de la opción garantiza que una esté seleccionada antes de llamar.
 
     const question = questions[questionIndex];
     const cardBack = card.querySelector('.card-back');
-    const selectedAnswerIndex = parseInt(selectedOption.dataset.index);
+    // Obtenemos la opción seleccionada DENTRO de esta tarjeta específica
+    const selectedOption = card.querySelector('.answer-option.selected');
+    const selectedAnswerIndex = parseInt(selectedOption.dataset.index); // Ahora selectedOption siempre existe aquí
     const isCorrect = selectedAnswerIndex === question.correctAnswerIndex;
 
     // Voltear la tarjeta
@@ -210,10 +190,11 @@ function flipCard(card, questionIndex) {
         // 1. Marcar como respondida (para que no se pueda interactuar más con ella)
         if (!answeredQuestions.includes(questionIndex)) {
              answeredQuestions.push(questionIndex);
-             // Deshabilitar el contenedor de la tarjeta
-             cardContainer.classList.add('disabled');
-             // Opcional: podrías remover el listener de la tarjeta aquí si quieres ser más explícito
-             // card.removeEventListener('click', ...); // Necesitarías guardar la referencia al listener
+             // Deshabilitar el contenedor de la tarjeta para evitar más clics
+             const cardContainer = card.closest('.card-container'); // Obtener el contenedor aquí
+             if (cardContainer) { // Asegurarse de que existe
+                 cardContainer.classList.add('disabled');
+             }
         }
 
         // 2. Desbloquear la siguiente fase si aplica
@@ -221,12 +202,11 @@ function flipCard(card, questionIndex) {
 
     } else {
         // Si es incorrecta:
-        // 1. NO marcar como respondida (para permitir reintentar)
-        // 2. NO deshabilitar la tarjeta (ya se controla por la fase)
-        // 3. Quitar la clase 'selected' de la opción después de un breve retraso
-        // 4. Voltear la tarjeta de nuevo después de un breve retraso
+        // 1. NO marcar como respondida
+        // 2. NO deshabilitar la tarjeta
+        // 3. Quitar la clase 'selected' de la opción y voltear de nuevo después de un breve retraso
 
-        // Quitar la clase 'selected' de todas las opciones
+        // Quitar la clase 'selected' de todas las opciones (aunque solo haya una con ella)
         card.querySelectorAll('.answer-option').forEach(opt => {
             opt.classList.remove('selected');
         });
@@ -236,6 +216,7 @@ function flipCard(card, questionIndex) {
             card.classList.remove('flipped');
             // Limpiar el contenido del reverso
             cardBack.innerHTML = '';
+             // La tarjeta sigue habilitada porque la clase 'disabled' nunca se agregó al contenedor
         }, 3000); // 3000 ms = 3 segundos
     }
 }
@@ -306,7 +287,7 @@ function renderQuestions() {
 // Función para asignar event listeners a las opciones de respuesta
 function setupAnswerOptionListeners() {
      document.querySelectorAll('.answer-option').forEach(option => {
-        // Remover listeners existentes (seguridad)
+        // Remover listeners existentes (seguridad) antes de añadir uno nuevo
         const oldListener = option.dataset.listener;
         if (oldListener) {
             option.removeEventListener('click', oldListener);
@@ -314,16 +295,24 @@ function setupAnswerOptionListeners() {
 
         // Crear nuevo listener
         const newListener = function(event) {
-             // Evitar que el clic en la opción se propague al contenedor de la tarjeta y la voltee de inmediato
+             // >>>>>>>>>> DETENER PROPAGACIÓN <<<<<<<<<<
+             // Esto es CRUCIAL para que el clic en la opción NO llegue al contenedor de la tarjeta
+             // y cause un comportamiento inesperado si hubiera otros listeners allí.
              event.stopPropagation();
 
-             // Solo permite seleccionar si la tarjeta no está deshabilitada
+             // Obtener el card y cardContainer
             const card = this.closest('.card');
             const cardContainer = card.closest('.card-container');
 
-            if (cardContainer.classList.contains('disabled')) {
-                return; // No hacer nada si deshabilitada
+            // --- NUEVA VERIFICACIÓN ---
+            // Solo permite interactuar si:
+            // 1. La tarjeta no está deshabilitada (por fase o ya respondida correctamente)
+            // 2. La tarjeta NO está actualmente volteada (mostrando feedback)
+            if (cardContainer.classList.contains('disabled') || card.classList.contains('flipped')) {
+                return; // No hacer nada si deshabilitada o ya mostrando feedback
             }
+            // --------------------------
+
 
             // Remover la clase "selected" de todas las opciones en la tarjeta actual
             card.querySelectorAll('.answer-option').forEach(opt => {
@@ -332,11 +321,17 @@ function setupAnswerOptionListeners() {
 
             // Agregar la clase "selected" a la opción clickeada
             this.classList.add('selected');
+
+            // >>>>>>>>>> LLAMAR A flipCard AQUÍ <<<<<<<<<<
+            // Esto voltea la tarjeta INMEDIATAMENTE después de seleccionar la opción
+            const questionIndex = parseInt(card.dataset.index);
+            flipCard(card, questionIndex);
+            // <<<<<<<<<<<<
         };
 
         // Añadir el nuevo listener
         option.addEventListener('click', newListener);
-        // Guardar referencia al listener
+        // Guardar referencia al listener (útil si necesitas removerlo después, aunque en este caso quizás no sea estrictamente necesario)
         option.dataset.listener = newListener;
      });
 }
